@@ -5,7 +5,7 @@ import { getAIComfort, getAIChat } from '../api'
 import './CompanionPanel.css'
 
 export default function CompanionPanel({ mood, color, onClose, onFeelBetter, extras = {},
-  onEmergency, onSafeConfirmed, onMakeHappyPlace, happyPlaces = [], onShowHappyPlace }) {
+  onEmergency, onSafeConfirmed, onMakeHappyPlace, happyPlaces = [], onShowHappyPlace, prefersReducedMotion = false }) {
   const [comfort, setComfort] = useState(null)
   const [typing, setTyping] = useState(true)
   const [showChat, setShowChat] = useState(false)
@@ -26,6 +26,17 @@ export default function CompanionPanel({ mood, color, onClose, onFeelBetter, ext
   const isPositive = POSITIVE_MOODS.includes(mood)
   const activeHappyPlaces = happyPlaces.filter(p => !p.expired)
   const speechSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition)
+
+  const getContrastText = hex => {
+    const raw = hex?.replace('#', '') || ''
+    const full = raw.length === 3 ? raw.split('').map(ch => ch + ch).join('') : raw
+    if (full.length !== 6) return '#111827'
+    const r = parseInt(full.slice(0, 2), 16)
+    const g = parseInt(full.slice(2, 4), 16)
+    const b = parseInt(full.slice(4, 6), 16)
+    const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+    return luminance > 0.58 ? '#111827' : '#f8fafc'
+  }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const stableExtras = useMemo(() => extras, [extras.timeOfDay, extras.pinNumber, extras.randomSeed])
@@ -50,8 +61,8 @@ export default function CompanionPanel({ mood, color, onClose, onFeelBetter, ext
   }, [mood, stableExtras])
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [chatHistory, chatTyping])
+    chatEndRef.current?.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth' })
+  }, [chatHistory, chatTyping, prefersReducedMotion])
 
   useEffect(() => {
     return () => {
@@ -169,11 +180,13 @@ export default function CompanionPanel({ mood, color, onClose, onFeelBetter, ext
     }])
   }
 
-  const bg = isPositive ? '#f0fdf4' : '#fff8f8'
+  const bg = isPositive
+    ? 'color-mix(in srgb, var(--success-bg) 65%, var(--surface-1))'
+    : 'color-mix(in srgb, var(--danger-bg) 60%, var(--surface-1))'
   const border = `2px solid ${color}33`
   const bubbleStyle = {
     '--bubble-user': color,
-    '--bubble-user-text': 'white',
+    '--bubble-user-text': getContrastText(color),
   }
 
   return (
@@ -183,13 +196,13 @@ export default function CompanionPanel({ mood, color, onClose, onFeelBetter, ext
           <div className="emergency-box">
             <div className="emergency-title">ARE YOU IN IMMEDIATE DANGER?</div>
             <div className="emergency-btns">
-              <a href="tel:911" className="emergency-btn emergency-btn-911">
+              <a href="tel:911" className="emergency-btn emergency-btn-911 ui-btn">
                 CALL 911
               </a>
-              <a href="tel:+14044135717" className="emergency-btn emergency-btn-police">
+              <a href="tel:+14044135717" className="emergency-btn emergency-btn-police ui-btn">
                 CALL GSU CAMPUS POLICE
               </a>
-              <button className="emergency-btn emergency-btn-safe" onClick={handleSafe}>
+              <button className="emergency-btn emergency-btn-safe ui-btn" onClick={handleSafe}>
                 ✓ I AM SAFE — False Alarm
               </button>
             </div>
@@ -258,7 +271,7 @@ export default function CompanionPanel({ mood, color, onClose, onFeelBetter, ext
 
           {isPositive ? (
             <div className="companion-button-stack">
-              <button onClick={onClose} className="companion-primary-btn" style={{ '--companion-btn': color }}>
+              <button onClick={onClose} className="companion-primary-btn ui-btn" style={{ '--companion-btn': color }}>
                 Keep spreading good vibes
               </button>
 
@@ -273,13 +286,13 @@ export default function CompanionPanel({ mood, color, onClose, onFeelBetter, ext
                   <div className="happy-prompt-actions">
                     <button
                       onClick={() => { setHappyPlaceDecided(true); setMadeHappyPlace(true); onMakeHappyPlace?.() }}
-                      className="happy-prompt-yes"
+                      className="happy-prompt-yes ui-btn"
                     >
                       Yes, open this spot
                     </button>
                     <button
                       onClick={() => setHappyPlaceDecided(true)}
-                      className="happy-prompt-no"
+                      className="happy-prompt-no ui-btn"
                     >
                       Keep private
                     </button>
@@ -310,7 +323,7 @@ export default function CompanionPanel({ mood, color, onClose, onFeelBetter, ext
                         </span>
                         <button
                           onClick={() => onShowHappyPlace?.(place)}
-                          className="nearby-happy-btn"
+                          className="nearby-happy-btn ui-btn"
                         >
                           Show me
                         </button>
@@ -321,11 +334,11 @@ export default function CompanionPanel({ mood, color, onClose, onFeelBetter, ext
               )}
 
               {!showChat && (
-                <button onClick={() => setShowChat(true)} className="companion-outline-btn" style={{ '--companion-btn': color }}>
+                <button onClick={() => setShowChat(true)} className="companion-outline-btn ui-btn" style={{ '--companion-btn': color }}>
                   Talk to me
                 </button>
               )}
-              <button onClick={onFeelBetter} className="companion-primary-btn" style={{ '--companion-btn': color }}>
+              <button onClick={onFeelBetter} className="companion-primary-btn ui-btn" style={{ '--companion-btn': color }}>
                 I feel a bit better
               </button>
             </div>
@@ -381,7 +394,7 @@ export default function CompanionPanel({ mood, color, onClose, onFeelBetter, ext
               </div>
               {emergencyLevel === 2 && !helpNowQuestion && (
                 <button
-                  className="help-now-btn"
+                  className="help-now-btn ui-btn"
                   onClick={() => setHelpNowQuestion(true)}
                 >
                   I need help now
@@ -394,13 +407,13 @@ export default function CompanionPanel({ mood, color, onClose, onFeelBetter, ext
                   </div>
                   <div className="help-now-actions">
                     <button
-                      className="help-now-yes"
+                      className="help-now-yes ui-btn"
                       onClick={() => { setEmergencyLevel(3); setHelpNowQuestion(false); onEmergency?.() }}
                     >
                       YES, I need help
                     </button>
                     <button
-                      className="help-now-no"
+                      className="help-now-no ui-btn"
                       onClick={() => {
                         setHelpNowQuestion(false)
                         setChatHistory(h => [...h, {
@@ -436,7 +449,7 @@ export default function CompanionPanel({ mood, color, onClose, onFeelBetter, ext
                     </button>
                   </div>
                 )}
-                <button onClick={sendChat} aria-label="Send chat message" className="chat-send-btn" style={{ '--chat-send': color }}>Send</button>
+                <button onClick={sendChat} aria-label="Send chat message" className="chat-send-btn ui-btn" style={{ '--chat-send': color }}>Send</button>
               </div>
               {listening && (
                 <div className="listening-label">

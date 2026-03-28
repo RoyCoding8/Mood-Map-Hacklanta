@@ -38,12 +38,12 @@ export default function UpdateMoodPanel({ pin, onClose, onUpdate }) {
           <div className="update-prompt">How are you feeling now?</div>
           <div className="update-mood-grid">
             {MOODS.map(mood => (
-              <button
-                key={mood.label}
-                onClick={() => handleMoodPick(mood)}
-                className="update-mood-btn"
-                style={{ '--mood-color': mood.color, '--mood-bg': `${mood.color}18` }}
-              >
+                <button
+                  key={mood.label}
+                  onClick={() => handleMoodPick(mood)}
+                  className="update-mood-btn ui-btn"
+                  style={{ '--mood-color': mood.color, '--mood-bg': `${mood.color}18` }}
+                >
                 <span className="update-mood-emoji">{mood.emoji}</span>
                 <span className="update-mood-label">{mood.label}</span>
               </button>
@@ -68,14 +68,14 @@ export default function UpdateMoodPanel({ pin, onClose, onUpdate }) {
           <div className="update-actions">
             <button
               onClick={() => onUpdate(pin.id, newMood, story.trim() || null)}
-              className="update-save-btn"
+              className="update-save-btn ui-btn"
               style={{ '--save-color': newMood.color }}
             >
               {story.trim() ? 'Share & Inspire Others' : 'Update Mood'}
             </button>
             <button
               onClick={() => onUpdate(pin.id, newMood, null)}
-              className="update-skip-btn"
+              className="update-skip-btn ui-btn"
             >
               Skip
             </button>

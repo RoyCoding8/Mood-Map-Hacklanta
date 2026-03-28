@@ -34,7 +34,7 @@ export default function CounselorAlert({ vibe, hotspot }) {
         </>
       ) : (
         <button
-          className="alert-action-btn"
+          className="alert-action-btn ui-btn"
           onClick={() => setSent(true)}
           style={{ '--action-bg': cfg.color }}
         >

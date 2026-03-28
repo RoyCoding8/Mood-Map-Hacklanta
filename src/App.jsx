@@ -59,7 +59,9 @@ export default function App() {
     if (stored === 'light' || stored === 'dark') return stored
     return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
   })
-  const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(
+    () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+  )
   const mapRef = useRef(null)
   const recentTimerRef = useRef(null)
   const clickedPinRef = useRef(false)
@@ -69,6 +71,18 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', theme)
     localStorage.setItem('moodmap_theme', theme)
   }, [theme])
+
+  useEffect(() => {
+    const media = window.matchMedia?.('(prefers-reduced-motion: reduce)')
+    if (!media) return undefined
+    const onChange = event => setPrefersReducedMotion(event.matches)
+    if (media.addEventListener) {
+      media.addEventListener('change', onChange)
+      return () => media.removeEventListener('change', onChange)
+    }
+    media.addListener(onChange)
+    return () => media.removeListener(onChange)
+  }, [])
 
   useEffect(() => {
     function countRecent() {
@@ -432,7 +446,7 @@ export default function App() {
     : '&copy; OpenStreetMap contributors'
 
   return (
-    <div className="app-root">
+    <div className={`app-root${companion ? ' companion-open' : ''}`}>
       <header className="app-header">
         <div>
           <div className="app-header-title">MoodMap</div>
@@ -442,11 +456,17 @@ export default function App() {
           {pins.length} active
         </div>
         <button
-          className="theme-toggle-btn"
+          className="theme-toggle-btn ui-btn ui-btn-pill"
           onClick={() => setTheme(t => (t === 'light' ? 'dark' : 'light'))}
           aria-label={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+          aria-pressed={theme === 'dark'}
+          title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
         >
-          {theme === 'light' ? 'Dark' : 'Light'}
+          <span className="theme-toggle-icon" aria-hidden="true">
+            {theme === 'light' ? '☾' : '☀'}
+          </span>
+          <span className="theme-toggle-fallback">{theme === 'light' ? 'Dark' : 'Light'}</span>
+          <span className="sr-only">{theme === 'light' ? 'Dark mode' : 'Light mode'}</span>
         </button>
       </header>
 
@@ -510,21 +530,16 @@ export default function App() {
                 >
                   {isHappyPlace ? (
                     <Popup>
-                      <div style={{ maxWidth:200, fontFamily:'inherit' }}>
-                        <div style={{ fontWeight:700, fontSize:13, color:'#d97706', marginBottom:5 }}>
+                      <div className="happy-place-popup">
+                        <div className="happy-place-popup-title">
                           ✨ Happy Place — open to visitors
                         </div>
-                        <div style={{ fontSize:12, color:'#555', marginBottom:8, lineHeight:1.5 }}>
+                        <div className="happy-place-popup-copy">
                           {hpData?.count ?? 1} {(hpData?.count ?? 1) === 1 ? 'person' : 'people'} here, welcoming company
                         </div>
                         <button
                           onClick={() => { clickedPinRef.current = true; handleJoinHappyPlace(pin.id) }}
-                          style={{
-                            width:'100%', padding:'7px 0',
-                            background:'#d97706', color:'white',
-                            border:'none', borderRadius:8,
-                            fontSize:12, fontWeight:700, cursor:'pointer'
-                          }}
+                          className="happy-place-popup-btn ui-btn"
                         >
                           Join this vibe 🌟
                         </button>
@@ -561,41 +576,13 @@ export default function App() {
               : `${recentCount} ${recentCount === 1 ? 'person' : 'people'} checked in recently`}
           </div>
 
-          {recentUserPins.length > 0 && (
-            <div className="pin-actions-panel" aria-label="Recent pin actions">
-              <div className="pin-actions-title">Recent pins (keyboard friendly)</div>
-              <div className="pin-actions-list">
-                {recentUserPins.map(pin => (
-                  <button
-                    key={pin.id}
-                    className="pin-action-btn"
-                    onClick={() => {
-                      mapRef.current?.flyTo([pin.lat, pin.lng], 17, { duration: prefersReducedMotion ? 0 : 1.1 })
-                      openUserPinEditor(pin.id)
-                    }}
-                  >
-                    <span aria-hidden="true">{pin.emoji}</span>
-                    <span>Edit {pin.mood} near {pin.area}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          <div className="map-legend" role="note" aria-label="Map legend">
-            <div className="map-legend-title">Map legend</div>
-            <ul className="map-legend-list">
-              <li className="map-legend-item"><span className="legend-dot stress" aria-hidden="true" />Stress or anxiety cluster</li>
-              <li className="map-legend-item"><span className="legend-dot support" aria-hidden="true" />Improving or positive mood</li>
-              <li className="map-legend-item"><span className="legend-dot safety" aria-hidden="true" />Emergency escalation</li>
-            </ul>
-            <div className="legend-note">Labels and icons supplement color cues.</div>
-          </div>
           {companion && (
             <div className="companion-panel-wrapper">
               <CompanionPanel
                 mood={companion.mood}
                 color={companion.color}
                 extras={companion.extras || {}}
+                prefersReducedMotion={prefersReducedMotion}
                 onClose={() => setCompanion(null)}
                 onFeelBetter={handleFeelBetter}
                 onEmergency={() => {
@@ -632,7 +619,7 @@ export default function App() {
                 {MOODS.map(mood => (
                   <button
                     key={mood.label}
-                    className="mood-picker-btn"
+                    className="mood-picker-btn ui-btn"
                     onClick={() => handleMoodSelect(mood)}
                     aria-label={`Select ${mood.label} mood`}
                     style={{
@@ -648,7 +635,7 @@ export default function App() {
               <button
                 onClick={() => setPending(null)}
                 aria-label="Cancel mood selection"
-                className="ghost-link-btn"
+                className="ghost-link-btn ui-btn"
               >
                 Cancel
               </button>
@@ -666,27 +653,27 @@ export default function App() {
               </div>
               <a
                 href="tel:+14044135717"
-                className="emergency-call-btn"
+                className="emergency-call-btn ui-btn"
               >
                 Alert Campus Police
               </a>
               <button
                 onClick={() => setEmergencyAlert(null)}
                 aria-label="Dismiss emergency alert"
-                className="emergency-dismiss-btn"
+                className="emergency-dismiss-btn ui-btn"
               >
                 Dismiss
               </button>
             </div>
           )}
 
-          <div className="panel-card">
+          <div className="panel-card ui-card">
             <div className="panel-title">
               Live mood breakdown
             </div>
             <MoodCount pins={pins} />
           </div>
-          <div className="panel-card">
+          <div className="panel-card ui-card">
             <div className="panel-title panel-title-inline">
               <span className="panel-live-dot" />
               Live activity
@@ -723,7 +710,7 @@ export default function App() {
                     </div>
                     <button
                       onClick={() => handleShowHappyPlace(place)}
-                      className="happy-place-find-btn"
+                      className="happy-place-find-btn ui-btn"
                     >
                       Find it
                     </button>
@@ -740,7 +727,7 @@ export default function App() {
             />
           ) : (
             <button
-              className="crisis-toggle-btn"
+              className="crisis-toggle-btn ui-btn"
               onClick={activateCrisisMode}
               aria-label="Activate campus crisis mode"
             >
@@ -752,7 +739,7 @@ export default function App() {
             onClick={() => handleAnalyse()}
             disabled={loading || waving}
             aria-label="Get AI insights on campus mood"
-            className="primary-cta-btn"
+            className="primary-cta-btn ui-btn"
           >
             {loading ? 'Analysing…' : 'Get AI Insights'}
           </button>
@@ -761,7 +748,7 @@ export default function App() {
             onClick={simulateStressWave}
             disabled={loading || waving}
             aria-label="Simulate a stress wave on the map"
-            className="danger-cta-btn"
+            className="danger-cta-btn ui-btn"
           >
             {waving ? 'Spreading…' : loading ? 'Analysing…' : 'Simulate Stress Wave'}
           </button>
@@ -774,14 +761,14 @@ export default function App() {
 
           {insights && (
             <div className="insights-stack">
-              <div className="panel-card">
+              <div className="panel-card ui-card">
                 <div className="insights-kicker">CAMPUS VIBE RIGHT NOW</div>
                 <div className="insights-vibe" style={{ color: vibeColors[insights.vibe] || 'var(--text-1)' }}>
                   {insights.vibe}
                 </div>
               </div>
 
-              <div className="panel-card">
+              <div className="panel-card ui-card">
                 <div className="insights-kicker">HOTSPOT DETECTED</div>
                 <div className="insights-hotspot">
                   {insights.hotspot}
@@ -792,13 +779,13 @@ export default function App() {
             </div>
           )}
 
-          <div className="quick-checkin-card" role="group" aria-label="Quick mood check-in">
+          <div className="quick-checkin-card ui-card" role="group" aria-label="Quick mood check-in">
             <div className="quick-checkin-title">Quick check-in</div>
             <div className="quick-checkin-grid">
               {MOODS.map(mood => (
                 <button
                   key={mood.label}
-                  className="quick-checkin-btn"
+                  className="quick-checkin-btn ui-btn"
                   onClick={() => handleQuickCheckIn(mood)}
                   aria-label={`Quick check in as ${mood.label}`}
                   style={{ '--quick-color': mood.color }}
@@ -828,7 +815,7 @@ export default function App() {
       </div>
       {showResetBtn && !showResetConfirm && (
         <button
-          className="reset-btn"
+          className="reset-btn ui-btn ui-btn-pill"
           onClick={() => setShowResetConfirm(true)}
           aria-label="Reset demo"
         >
@@ -845,14 +832,14 @@ export default function App() {
             <button
               onClick={handleReset}
               aria-label="Confirm reset"
-              className="reset-confirm-yes"
+              className="reset-confirm-yes ui-btn"
             >
               Yes, Reset
             </button>
             <button
               onClick={() => { setShowResetConfirm(false); setShowResetBtn(false) }}
               aria-label="Cancel reset"
-              className="reset-confirm-no"
+              className="reset-confirm-no ui-btn"
             >
               Cancel
             </button>

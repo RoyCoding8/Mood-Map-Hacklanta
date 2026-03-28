@@ -40,7 +40,7 @@ export default function CrisisPanel({ onDeactivate, onResolution, resolutionActi
                 </div>
               ) : (
                 <button
-                  className="crisis-confirm-btn"
+                  className="crisis-confirm-btn ui-btn"
                   onClick={() => confirm(i)}
                 >
                   Confirm action
@@ -54,7 +54,7 @@ export default function CrisisPanel({ onDeactivate, onResolution, resolutionActi
       <button
         onClick={onResolution}
         disabled={resolutionActive}
-        className="crisis-resolution-btn"
+        className="crisis-resolution-btn ui-btn"
       >
         {resolutionActive ? (
           <span className="resolution-label">Resolution in progress…</span>
@@ -65,7 +65,7 @@ export default function CrisisPanel({ onDeactivate, onResolution, resolutionActi
 
       <button
         onClick={onDeactivate}
-        className="crisis-deactivate-btn"
+        className="crisis-deactivate-btn ui-btn"
       >
         Deactivate Crisis Mode
       </button>

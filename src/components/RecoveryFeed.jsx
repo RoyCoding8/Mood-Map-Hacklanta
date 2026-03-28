@@ -9,7 +9,7 @@ export default function RecoveryFeed({ stories, onHeart }) {
   }
 
   return (
-    <div className="panel-card">
+    <div className="panel-card ui-card">
       <div className="panel-title panel-title-inline">
         Recovery Stories
       </div>
@@ -30,7 +30,7 @@ export default function RecoveryFeed({ stories, onHeart }) {
                 "{s.story}"
               </div>
               <div className="story-actions">
-                <button className="heart-btn" onClick={() => onHeart(s.id)} aria-label="Heart this recovery story">❤️</button>
+                <button className="heart-btn ui-btn" onClick={() => onHeart(s.id)} aria-label="Heart this recovery story">❤️</button>
                 <span className="story-helped">
                   {s.hearts > 0
                     ? `This helped ${s.hearts} ${s.hearts === 1 ? 'person' : 'people'} today`

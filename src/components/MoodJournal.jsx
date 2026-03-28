@@ -2,7 +2,7 @@ import './MoodJournal.css'
 
 export default function MoodJournal({ userPins, streak, journalSummary, loadingJournal }) {
   return (
-    <div className="panel-card">
+    <div className="panel-card ui-card">
       <div className="journal-header-row">
         <div className="panel-title panel-title-inline">
           <span>My Mood Today</span>

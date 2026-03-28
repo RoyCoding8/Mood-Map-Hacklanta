@@ -8,12 +8,12 @@
 }
 
 .journal-summary {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--text-2);
   line-height: 1.75;
   font-style: italic;
   background: var(--surface-2);
-  border-radius: 10px;
+  border-radius: var(--control-radius);
   padding: 10px 12px;
   border-left: 3px solid var(--primary);
   animation: fade-up 0.4s ease;
@@ -32,8 +32,8 @@
 }
 
 .journal-streak-chip {
-  font-size: 12px;
-  color: #ff9800;
+  font-size: var(--text-sm);
+  color: var(--warning-solid);
   font-weight: 600;
   display: flex;
   align-items: center;
@@ -60,15 +60,16 @@
 }
 
 .journal-time {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
   min-width: 58px;
   flex-shrink: 0;
 }
 
 .journal-line-text {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--text-1);
+  overflow-wrap: anywhere;
 }
 
 .journal-summary-wrap {
@@ -84,14 +85,15 @@
 }
 
 .journal-loading-text {
-  font-size: 12px;
+  font-size: var(--text-sm);
   color: var(--text-muted);
 }
 
 .journal-streak-msg-wrap {
   margin-top: 12px;
-  font-size: 12px;
+  font-size: var(--text-sm);
   line-height: 1.6;
+  overflow-wrap: anywhere;
 }
 
 .journal-streak-msg {
@@ -99,7 +101,7 @@
 }
 
 .journal-streak-msg-hot {
-  color: #ff9800;
+  color: var(--warning-solid);
   display: flex;
   align-items: center;
   gap: 4px;
