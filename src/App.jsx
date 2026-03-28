@@ -450,12 +450,8 @@ export default function App() {
   const dominantMood = getDominantMood(moodTotals, pins.length)
   const mapOverlayColor = getMapOverlayColor({ crisisMode, resolutionMode, dominantMood })
   const liveCounterClassName = getLiveCounterClassName({ crisisMode, resolutionMode })
-  const mapTileUrl = theme === 'dark'
-    ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-    : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
-  const mapTileAttribution = theme === 'dark'
-    ? '&copy; OpenStreetMap contributors &copy; CARTO'
-    : '&copy; OpenStreetMap contributors'
+  const mapTileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+  const mapTileAttribution = '&copy; OpenStreetMap contributors'
 
   const mapPinUI = pins.map(pin => {
     const {
