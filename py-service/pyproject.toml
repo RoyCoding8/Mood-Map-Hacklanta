@@ -1,0 +1,25 @@
+[project]
+name = "py-service"
+version = "0.1.0"
+description = "MoodMap Python RAG service"
+readme = "README.md"
+authors = [
+    { name = "Shashwata Roy", email = "sroy389@gatech.edu" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "chromadb>=1.5.5",
+    "fastapi>=0.135.2",
+    "httpx>=0.28.1",
+    "pydantic>=2.12.5",
+    "python-dotenv>=1.2.2",
+    "uvicorn[standard]>=0.42.0",
+]
+
+[project.scripts]
+py-service = "py_service.main:main"
+py-ingest = "py_service.ingest:main"
+
+[build-system]
+requires = ["uv_build>=0.10.8,<0.11.0"]
+build-backend = "uv_build"

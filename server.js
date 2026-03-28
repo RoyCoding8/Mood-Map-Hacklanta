@@ -9,6 +9,8 @@ import {
   canDeviceDropPin, createPin, updatePin as storeUpdatePin,
   deletePin as storeDeletePin, addSupport
 } from './lib/pinStore.js'
+import { callPyChat, postPyJson, getPyHealth } from './lib/pyClient.js'
+import { detectSafetyLevel, getDeterministicSafetyReply } from './lib/chatSafety.js'
 
 requireEnv()
 
@@ -29,7 +31,40 @@ app.use(express.json({ limit: '50kb' }))
 
 app.use('/api', rateLimitMiddleware)
 
+const ENABLE_PY_PROXY_EXTRA_ROUTES = process.env.PY_PROXY_EXTRA_ROUTES !== '0'
+
+app.get('/health', async (_, res) => {
+  try {
+    const python = await getPyHealth({ timeoutMs: 2_500 })
+    res.json({ ok: true, python })
+  } catch (error) {
+    res.status(200).json({
+      ok: true,
+      python: { ok: false, error: error.message },
+    })
+  }
+})
+
 app.post('/api/insights', async (req, res) => {
+  if (ENABLE_PY_PROXY_EXTRA_ROUTES) {
+    try {
+      const pins = validatePins(req.body?.pins)
+      if (!pins) return res.status(400).json({ error: 'Invalid or empty pins array' })
+
+      const pyResult = await postPyJson('/py/insights', { pins })
+      if (
+        typeof pyResult?.hotspot === 'string' &&
+        typeof pyResult?.dominant === 'string' &&
+        typeof pyResult?.alert === 'string' &&
+        typeof pyResult?.vibe === 'string'
+      ) {
+        return res.json(pyResult)
+      }
+    } catch (error) {
+      console.warn('Python insights unavailable, falling back to Node LLM:', error.message)
+    }
+  }
+
   try {
     const pins = validatePins(req.body?.pins)
     if (!pins) return res.status(400).json({ error: 'Invalid or empty pins array' })
@@ -59,6 +94,39 @@ Only return the JSON. No extra text.`,
 function ordinal(n) { return n === 1 ? '1st' : n === 2 ? '2nd' : n === 3 ? '3rd' : `${n}th` }
 
 app.post('/api/comfort', async (req, res) => {
+  if (ENABLE_PY_PROXY_EXTRA_ROUTES) {
+    try {
+      const mood = validateMood(req.body?.mood)
+      if (!mood) return res.status(400).json({ error: 'Invalid mood value' })
+
+      const timeOfDay = ['morning', 'afternoon', 'evening', 'night'].includes(req.body?.timeOfDay)
+        ? req.body.timeOfDay
+        : 'morning'
+      const pinNumber = Math.max(1, Math.min(100, Number(req.body?.pinNumber) || 1))
+      const randomSeed = Math.max(0, Math.min(10000, Number(req.body?.randomSeed) || 500))
+
+      const pyResult = await postPyJson('/py/comfort', {
+        mood,
+        timeOfDay,
+        pinNumber,
+        randomSeed,
+      })
+
+      if (typeof pyResult?.message === 'string' && typeof pyResult?.action === 'string') {
+        return res.json({
+          message: pyResult.message,
+          action: pyResult.action,
+          joke: pyResult.joke || null,
+          reminder: pyResult.reminder || null,
+          musicVibes: pyResult.musicVibes || null,
+          recoveryPrompt: pyResult.recoveryPrompt || null,
+        })
+      }
+    } catch (error) {
+      console.warn('Python comfort unavailable, falling back to Node LLM:', error.message)
+    }
+  }
+
   try {
     const mood = validateMood(req.body?.mood)
     if (!mood) return res.status(400).json({ error: 'Invalid mood value' })
@@ -142,9 +210,52 @@ ${jsonShape}`
 })
 
 app.post('/api/chat', async (req, res) => {
+  let mood
+  let message
+
   try {
-    const mood = validateMood(req.body?.mood)
-    const message = validateMessage(req.body?.message)
+    mood = validateMood(req.body?.mood)
+    message = validateMessage(req.body?.message)
+    if (!mood || !message) return res.status(400).json({ error: 'Invalid mood or message' })
+
+    const safetyLevel = detectSafetyLevel(message)
+    if (safetyLevel >= 2) {
+      return res.json({
+        reply: getDeterministicSafetyReply(safetyLevel),
+        safetyLevel,
+        source: 'safety',
+      })
+    }
+
+    const rawConversationId = req.body?.conversationId
+    const conversationId =
+      typeof rawConversationId === 'string' && rawConversationId.trim()
+        ? rawConversationId.trim().slice(0, 120)
+        : undefined
+
+    const pyResult = await callPyChat({ mood, message, conversationId })
+    const reply =
+      typeof pyResult?.reply === 'string'
+        ? pyResult.reply
+        : typeof pyResult?.message === 'string'
+          ? pyResult.message
+          : null
+
+    if (reply) {
+      return res.json({
+        reply,
+        conversationId: pyResult.conversationId || conversationId || null,
+        safetyLevel,
+        source: 'python',
+      })
+    }
+  } catch (error) {
+    console.warn('Python chat unavailable, falling back to Node LLM:', error.message)
+  }
+
+  try {
+    mood = mood || validateMood(req.body?.mood)
+    message = message || validateMessage(req.body?.message)
     if (!mood || !message) return res.status(400).json({ error: 'Invalid mood or message' })
 
     const reply = await callGroq({
@@ -156,13 +267,27 @@ Do not introduce yourself. Just respond naturally.`,
       maxTokens: 200
     })
 
-    res.json({ reply })
+    res.json({ reply, source: 'node-fallback' })
   } catch (e) {
     safeError(res, e, 'Chat')
   }
 })
 
 app.post('/api/journal', async (req, res) => {
+  if (ENABLE_PY_PROXY_EXTRA_ROUTES) {
+    try {
+      const entries = validateEntries(req.body?.entries)
+      if (!entries) return res.status(400).json({ error: 'Invalid or empty entries array' })
+
+      const pyResult = await postPyJson('/py/journal', { entries })
+      if (typeof pyResult?.summary === 'string' && pyResult.summary.trim()) {
+        return res.json({ summary: pyResult.summary })
+      }
+    } catch (error) {
+      console.warn('Python journal unavailable, falling back to Node LLM:', error.message)
+    }
+  }
+
   try {
     const entries = validateEntries(req.body?.entries)
     if (!entries) return res.status(400).json({ error: 'Invalid or empty entries array' })
@@ -185,6 +310,27 @@ Return only the reflection text. No quotes, no labels, no extra formatting.`,
 })
 
 app.post('/api/generate-reel-script', async (req, res) => {
+  if (ENABLE_PY_PROXY_EXTRA_ROUTES) {
+    try {
+      const pins = validatePins(req.body?.pins)
+      if (!pins) return res.status(400).json({ error: 'Invalid or empty pins array' })
+      const recoveryStories = Array.isArray(req.body?.recoveryStories)
+        ? req.body.recoveryStories.slice(0, 5)
+        : []
+
+      const pyResult = await postPyJson('/py/generate-reel-script', {
+        pins,
+        recoveryStories,
+      })
+
+      if (pyResult?.data && typeof pyResult.data === 'object') {
+        return res.json(pyResult)
+      }
+    } catch (error) {
+      console.warn('Python reel script unavailable, falling back to Node LLM:', error.message)
+    }
+  }
+
   try {
     const pins = validatePins(req.body?.pins)
     if (!pins) return res.status(400).json({ error: 'Invalid or empty pins array' })

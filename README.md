@@ -2,7 +2,7 @@
 
 Anonymous campus emotional pulse app for hackathon demos. Students drop mood pins on a map, get immediate AI support, and counselors can view campus-level trends.
 
-This codebase is JavaScript-only (no TypeScript).
+Core app code is JavaScript-only (no TypeScript). A Python `uv` service is now included for RAG and AI orchestration.
 
 ## Implemented Features
 
@@ -64,6 +64,46 @@ Windows helper script:
 
 - `run.bat` starts backend + frontend for local demo
 
+## Python RAG Service (FastAPI + ChromaDB)
+
+This project now includes a self-contained Python `uv` service at `py-service/`.
+
+- Gemini embeddings power retrieval (`GEMINI_API_KEY`)
+- Groq powers chat generation (`GROQ_API_KEY` or existing `LLM_API_KEY`)
+- ChromaDB persists local vectors in `py-service/data/chroma`
+
+### Start Python Service
+
+```bash
+# from repo root
+npm run py:install
+npm run py:ingest
+npm run py:server
+```
+
+Python endpoints:
+
+- `GET /py/health`
+- `GET /py/rag/stats`
+- `POST /py/chat`
+- `POST /py/rag/upsert`
+- `POST /py/rag/query`
+- `POST /py/comfort`
+- `POST /py/journal`
+- `POST /py/insights`
+- `POST /py/generate-reel-script`
+
+Ingestion:
+
+- Seed corpus files live in `py-service/corpus/`
+- Run `npm run py:ingest` to upsert those documents into ChromaDB
+
+Node integration:
+
+- `/api/chat` routes to Python by default and falls back to existing Node/Groq logic if Python is unavailable.
+- Additional AI endpoints are proxied to Python by default (`/api/comfort`, `/api/journal`, `/api/insights`, `/api/generate-reel-script`).
+- Set `PY_PROXY_EXTRA_ROUTES=0` if you need to temporarily force those endpoints back to Node handlers.
+
 ## LLM Provider Support
 
 Set `LLM_PROVIDER` in `.env`.
@@ -82,10 +122,10 @@ For OpenAI-compatible providers (Together, Fireworks, Mistral, etc.), set `LLM_P
 
 | Route | Purpose | Express (`server.js`) | Vercel `api/` |
 |-------|---------|------------------------|---------------|
-| `/api/insights` | Campus mood insights | Yes | Yes |
-| `/api/comfort` | Companion comfort payload | Yes | Yes |
-| `/api/chat` | Companion chat reply | Yes | Yes |
-| `/api/journal` | Daily journal reflection | Yes | Yes |
+| `/api/insights` | Campus mood insights | Yes (Python-proxy by default) | Yes |
+| `/api/comfort` | Companion comfort payload | Yes (Python-proxy by default) | Yes |
+| `/api/chat` | Companion chat reply | Yes (Python-proxy + safety gate) | Yes |
+| `/api/journal` | Daily journal reflection | Yes (Python-proxy by default) | Yes |
 | `/api/pin` | Create/update/delete user pins | Yes | Yes |
 | `/api/support` | Hug / me-too reactions | Yes | Yes |
 | `/api/generate-reel-script` | Reel data generation | Yes | No (not yet in `api/`) |
@@ -96,6 +136,8 @@ For OpenAI-compatible providers (Together, Fireworks, Mistral, etc.), set `LLM_P
 |---------|-------------|
 | `npm run dev` | Start Vite dev server |
 | `npm run server` | Start Express API server |
+| `npm run py:install` | Install Python service dependencies via uv |
+| `npm run py:server` | Start Python FastAPI service |
 | `npm run build` | Build frontend for production |
 | `npm run preview` | Preview production build locally |
 | `npm run lint` | Run ESLint |
@@ -114,8 +156,13 @@ For OpenAI-compatible providers (Together, Fireworks, Mistral, etc.), set `LLM_P
 │   ├── pin.js
 │   └── support.js
 ├── lib/
+│   ├── chatSafety.js       # Deterministic L1/L2/L3 safety gate for chat
 │   ├── groq.js             # LLM provider layer + validation + CORS + rate limit
-│   └── pinStore.js         # In-memory pin/support store for API routes
+│   ├── pinStore.js         # In-memory pin/support store for API routes
+│   └── pyClient.js         # Node -> Python proxy client
+├── py-service/
+│   ├── src/py_service/     # FastAPI app, RAG, schemas, Groq/Gemini clients
+│   └── pyproject.toml      # uv project config
 ├── src/
 │   ├── __tests__/          # Utility tests (emergency detect + JSON parser)
 │   ├── components/         # UI modules
@@ -135,6 +182,7 @@ For OpenAI-compatible providers (Together, Fireworks, Mistral, etc.), set `LLM_P
 - Seed pins shown on initial map are frontend demo data and are not persisted to backend.
 - `/api/support` can only resolve pins known to backend store (works for pins created via `/api/pin`).
 - Reel generation endpoint is available in local Express but not yet mirrored as a Vercel function file.
+- Python RAG currently seeds a small starter corpus; add campus-specific documents via `/py/rag/upsert`.
 
 ## Testing
 

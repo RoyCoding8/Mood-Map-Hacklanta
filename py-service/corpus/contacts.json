@@ -1,0 +1,26 @@
+[
+  {
+    "id": "contact-911",
+    "text": "Emergency services number is 911 for immediate life-threatening situations.",
+    "metadata": {
+      "type": "emergency_contact",
+      "priority": "critical"
+    }
+  },
+  {
+    "id": "contact-campus-police",
+    "text": "Georgia State University Police can be reached at 404-413-3333 for urgent campus safety concerns.",
+    "metadata": {
+      "type": "campus_contact",
+      "priority": "high"
+    }
+  },
+  {
+    "id": "contact-988",
+    "text": "In the United States, students can call or text 988 for immediate mental health crisis support.",
+    "metadata": {
+      "type": "crisis_hotline",
+      "priority": "high"
+    }
+  }
+]

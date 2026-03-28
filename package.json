@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vite",
     "server": "node server.js",
+    "py:install": "uv sync --project py-service",
+    "py:server": "uv run --project py-service py-service",
+    "py:ingest": "uv run --project py-service py-ingest",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",

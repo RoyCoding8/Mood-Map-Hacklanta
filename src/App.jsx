@@ -9,6 +9,13 @@ import {
 } from './constants'
 import { getTimeOfDay, getArea } from './utils'
 import {
+  derivePinVisualState,
+  getDominantMood,
+  getLiveCounterClassName,
+  getMapOverlayColor,
+  getMoodTotals,
+} from './features/map/pinState'
+import {
   initJournalPins, saveJournalPins, initStreak, bumpStreak,
   loadRecoveryStories, saveRecoveryStories,
 } from './storage'
@@ -439,28 +446,124 @@ export default function App() {
 
   const userPinIds = new Set(userPins.map(p => p.id))
 
-  const moodTotals = {}
-  MOODS.forEach(m => { moodTotals[m.label] = 0 })
-  pins.forEach(p => { if (moodTotals[p.mood] !== undefined) moodTotals[p.mood]++ })
-  const dominantMood = pins.length
-    ? Object.entries(moodTotals).sort((a, b) => b[1] - a[1])[0][0]
-    : null
-  const mapOverlayColor =
-    crisisMode && !resolutionMode ? 'rgba(183,28,28,0.09)' :
-    resolutionMode                ? 'rgba(76,175,80,0.07)' :
-    dominantMood === 'Stressed'   ? 'rgba(244,67,54,0.05)' :
-    dominantMood === 'Happy'      ? 'rgba(76,175,80,0.05)' : 'transparent'
-  const liveCounterClassName = crisisMode && !resolutionMode
-    ? 'live-counter live-counter-danger'
-    : resolutionMode
-      ? 'live-counter live-counter-success'
-      : 'live-counter'
+  const moodTotals = getMoodTotals(pins, MOODS)
+  const dominantMood = getDominantMood(moodTotals, pins.length)
+  const mapOverlayColor = getMapOverlayColor({ crisisMode, resolutionMode, dominantMood })
+  const liveCounterClassName = getLiveCounterClassName({ crisisMode, resolutionMode })
   const mapTileUrl = theme === 'dark'
     ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
     : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
   const mapTileAttribution = theme === 'dark'
     ? '&copy; OpenStreetMap contributors &copy; CARTO'
     : '&copy; OpenStreetMap contributors'
+
+  const mapPinUI = pins.map(pin => {
+    const {
+      isResolved,
+      isSOS,
+      isHappyPlace,
+      isCrisis,
+      isWave,
+      isUserPin,
+      hasStory,
+      hpData,
+      className,
+    } = derivePinVisualState({
+      pin,
+      resolvedPinIds,
+      sosPinIds,
+      happyPlaceIds,
+      crisisPinIds,
+      wavePinIds,
+      newPinIds,
+      userPinIds,
+      happyPlaces,
+      supportRipple,
+    })
+
+    return (
+      <CircleMarker
+        key={pin.id}
+        center={[pin.lat, pin.lng]}
+        radius={isSOS ? 18 : isHappyPlace ? 17 : isWave ? 16 : isCrisis ? 14 : hasStory ? 15 : 13}
+        fillColor={
+          isSOS ? '#FF0000'
+            : isHappyPlace ? '#FFC107'
+              : isResolved ? '#81C784'
+                : pin.color
+        }
+        color={
+          isSOS ? '#FF0000'
+            : isHappyPlace ? '#FF8F00'
+              : isResolved ? '#4CAF50'
+                : (isCrisis || isWave) ? '#FF0000'
+                  : hasStory ? '#FFD700'
+                    : 'white'
+        }
+        weight={isSOS ? 4 : isHappyPlace ? 4 : (isCrisis || isWave) ? 3 : hasStory ? 4 : 2}
+        fillOpacity={isResolved ? 0.65 : 0.9}
+        className={className}
+        eventHandlers={isUserPin ? {
+          click: () => openUserPinEditor(pin.id)
+        } : {}}
+      >
+        {isHappyPlace ? (
+          <Popup>
+            <div className="happy-place-popup">
+              <div className="happy-place-popup-title">
+                ✨ Happy Place — open to visitors
+              </div>
+              <div className="happy-place-popup-copy">
+                {hpData?.count ?? 1} {(hpData?.count ?? 1) === 1 ? 'person' : 'people'} here, welcoming company
+              </div>
+              <button
+                onClick={() => { clickedPinRef.current = true; handleJoinHappyPlace(pin.id) }}
+                className="happy-place-popup-btn ui-btn"
+              >
+                Join this vibe 🌟
+              </button>
+            </div>
+          </Popup>
+        ) : !isUserPin && (
+          <Popup>
+            <div className="pin-popup">
+              {hasStory ? (
+                <>
+                  <div className="pin-popup-mood">
+                    {pin.fromEmoji} {pin.fromMood} → {pin.emoji} {pin.mood}
+                  </div>
+                  <div className="pin-popup-story">"{pin.story}"</div>
+                </>
+              ) : (
+                <div className="pin-popup-mood">{pin.emoji} {pin.mood} — {pin.time}</div>
+              )}
+              {supportCounts[pin.id] > 0 && (
+                <div className="pin-popup-support-count">
+                  ❤️ {supportCounts[pin.id]} {supportCounts[pin.id] === 1 ? 'student relates' : 'students relate'}
+                </div>
+              )}
+              <div className="pin-popup-actions">
+                <button
+                  className={`pin-support-btn ui-btn${supportedPins.has(pin.id) ? ' pin-support-sent' : ''}`}
+                  onClick={() => { clickedPinRef.current = true; handleSendSupport(pin.id, 'hug') }}
+                  disabled={supportedPins.has(pin.id)}
+                >
+                  {supportedPins.has(pin.id) ? '🤗 Hug sent' : '🤗 Send a Hug'}
+                </button>
+                <button
+                  className={`pin-support-btn pin-support-metoo ui-btn${supportedPins.has(pin.id) ? ' pin-support-sent' : ''}`}
+                  onClick={() => { clickedPinRef.current = true; handleSendSupport(pin.id, 'metoo') }}
+                  disabled={supportedPins.has(pin.id)}
+                >
+                  {supportedPins.has(pin.id) ? '💙 Noted' : '💙 Me Too'}
+                </button>
+              </div>
+            </div>
+          </Popup>
+        )}
+      </CircleMarker>
+    )
+  })
 
   return (
     <div className={`app-root${companion ? ' companion-open' : ''}`}>
@@ -503,106 +606,7 @@ export default function App() {
               attribution={mapTileAttribution}
             />
             <PinDropper onDrop={handleMapClick} skipRef={clickedPinRef} />
-            {pins.map(pin => {
-              const isResolved   = resolvedPinIds.has(pin.id)
-              const isSOS        = sosPinIds.has(pin.id)
-              const isHappyPlace = !isSOS && happyPlaceIds.has(pin.id)
-              const isCrisis     = !isResolved && !isSOS && !isHappyPlace && crisisPinIds.has(pin.id)
-              const isWave       = !isResolved && !isSOS && !isHappyPlace && !isCrisis && wavePinIds.has(pin.id)
-              const isNew        = !isResolved && !isSOS && !isHappyPlace && !isCrisis && !isWave && newPinIds.has(pin.id)
-              const isUserPin    = userPinIds.has(pin.id)
-              const hasStory     = !!pin.hasStory
-              const hpData       = isHappyPlace ? happyPlaces.find(p => p.id === pin.id) : null
-              return (
-                <CircleMarker
-                  key={pin.id}
-                  center={[pin.lat, pin.lng]}
-                  radius={isSOS ? 18 : isHappyPlace ? 17 : isWave ? 16 : isCrisis ? 14 : hasStory ? 15 : 13}
-                  fillColor={
-                    isSOS        ? '#FF0000' :
-                    isHappyPlace ? '#FFC107' :
-                    isResolved   ? '#81C784' : pin.color
-                  }
-                  color={
-                    isSOS                  ? '#FF0000' :
-                    isHappyPlace           ? '#FF8F00' :
-                    isResolved             ? '#4CAF50' :
-                    (isCrisis || isWave)   ? '#FF0000' :
-                    hasStory               ? '#FFD700' : 'white'
-                  }
-                  weight={isSOS ? 4 : isHappyPlace ? 4 : (isCrisis || isWave) ? 3 : hasStory ? 4 : 2}
-                  fillOpacity={isResolved ? 0.65 : 0.9}
-                  className={
-                    isSOS        ? 'sos-pin'        :
-                    isHappyPlace ? 'happy-place-pin' :
-                    isResolved   ? 'resolved-pin'   :
-                    isCrisis     ? 'crisis-pin'     :
-                    isWave       ? 'wave-pin'        :
-                    hasStory     ? 'story-pin'      :
-                    isNew                          ? 'pin-new' :
-                    supportRipple === pin.id        ? 'pin-support-ripple' : ''
-                  }
-                  eventHandlers={isUserPin ? {
-                    click: () => openUserPinEditor(pin.id)
-                  } : {}}
-                >
-                  {isHappyPlace ? (
-                    <Popup>
-                      <div className="happy-place-popup">
-                        <div className="happy-place-popup-title">
-                          ✨ Happy Place — open to visitors
-                        </div>
-                        <div className="happy-place-popup-copy">
-                          {hpData?.count ?? 1} {(hpData?.count ?? 1) === 1 ? 'person' : 'people'} here, welcoming company
-                        </div>
-                        <button
-                          onClick={() => { clickedPinRef.current = true; handleJoinHappyPlace(pin.id) }}
-                          className="happy-place-popup-btn ui-btn"
-                        >
-                          Join this vibe 🌟
-                        </button>
-                      </div>
-                    </Popup>
-                  ) : !isUserPin && (
-                    <Popup>
-                      <div className="pin-popup">
-                        {hasStory ? (
-                          <>
-                            <div className="pin-popup-mood">
-                              {pin.fromEmoji} {pin.fromMood} → {pin.emoji} {pin.mood}
-                            </div>
-                            <div className="pin-popup-story">"{pin.story}"</div>
-                          </>
-                        ) : (
-                          <div className="pin-popup-mood">{pin.emoji} {pin.mood} — {pin.time}</div>
-                        )}
-                        {supportCounts[pin.id] > 0 && (
-                          <div className="pin-popup-support-count">
-                            ❤️ {supportCounts[pin.id]} {supportCounts[pin.id] === 1 ? 'student relates' : 'students relate'}
-                          </div>
-                        )}
-                        <div className="pin-popup-actions">
-                          <button
-                            className={`pin-support-btn ui-btn${supportedPins.has(pin.id) ? ' pin-support-sent' : ''}`}
-                            onClick={() => { clickedPinRef.current = true; handleSendSupport(pin.id, 'hug') }}
-                            disabled={supportedPins.has(pin.id)}
-                          >
-                            {supportedPins.has(pin.id) ? '🤗 Hug sent' : '🤗 Send a Hug'}
-                          </button>
-                          <button
-                            className={`pin-support-btn pin-support-metoo ui-btn${supportedPins.has(pin.id) ? ' pin-support-sent' : ''}`}
-                            onClick={() => { clickedPinRef.current = true; handleSendSupport(pin.id, 'metoo') }}
-                            disabled={supportedPins.has(pin.id)}
-                          >
-                            {supportedPins.has(pin.id) ? '💙 Noted' : '💙 Me Too'}
-                          </button>
-                        </div>
-                      </div>
-                    </Popup>
-                  )}
-                </CircleMarker>
-              )
-            })}
+            {mapPinUI}
           </MapContainer>
           <div className="map-tint-overlay" style={{ background: mapOverlayColor }} />
           <div className={liveCounterClassName}>

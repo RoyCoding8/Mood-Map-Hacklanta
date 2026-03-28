@@ -22,5 +22,9 @@ Thumbs.db
 .eslintcache
 .vercel/
 coverage/
+py-service/.venv/
+py-service/.pytest_cache/
+py-service/.ruff_cache/
+py-service/data/
 *.md
 !README.md
