@@ -59,30 +59,6 @@ export function saveRecoveryStories(s) {
   localStorage.setItem('moodmap_recovery_stories', encode(s))
 }
 
-// ── Supported pins ───────────────────────────────────────────────────────────
-// Tracks which pin IDs this device has already sent support to.
-// Persisted as a plain JSON array — no obfuscation needed (not sensitive).
-const SUPPORTED_KEY = 'moodmap_supported_pins'
-
-export function getSupportedPins() {
-  try {
-    const raw = localStorage.getItem(SUPPORTED_KEY)
-    return new Set(raw ? JSON.parse(raw) : [])
-  } catch {
-    return new Set()
-  }
-}
-
-export function addSupportedPin(pinId) {
-  try {
-    const current = getSupportedPins()
-    current.add(String(pinId))
-    // Cap at 1 000 entries so the key never grows unbounded
-    const trimmed = [...current].slice(-1_000)
-    localStorage.setItem(SUPPORTED_KEY, JSON.stringify(trimmed))
-  } catch {}
-}
-
 // ── Shadow ID (Device Token) ──────────────────────────────────────────────────
 // Generates a cryptographically secure UUID v4 on first call and persists it
 // in localStorage. Completely anonymous — no account, no server registration.

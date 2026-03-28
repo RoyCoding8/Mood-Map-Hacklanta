@@ -89,15 +89,3 @@ export async function verifyPinUpdate(pinId) {
 export async function verifyPinDelete(pinId) {
   return apiFetch(`${BASE}/api/pins/${encodeURIComponent(pinId)}`, null, 'DELETE')
 }
-
-/**
- * Notify the backend that this device is sending support to a pin.
- * The backend validates the device ID and applies rate limiting.
- * The actual Firestore supportCount increment is done client-side via
- * incrementPinSupport() after this call succeeds.
- *
- * Fire-and-forget safe — the optimistic local update already happened.
- */
-export async function sendSupport(pinId) {
-  return apiFetch(`${BASE}/api/pins/${encodeURIComponent(pinId)}/support`, null, 'POST')
-}

@@ -2,8 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import './App.css'
 import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
-import { getAIInsights, getJournalSummary, registerPin, verifyPinUpdate, verifyPinDelete, sendSupport } from './api'
-import { pushMoodPin, subscribeToPins, updateMoodPin, deleteMoodPin, incrementPinSupport } from './firebase'
+import { getAIInsights, getJournalSummary, registerPin, verifyPinUpdate, verifyPinDelete } from './api'
+import { pushMoodPin, subscribeToPins, updateMoodPin, deleteMoodPin } from './firebase'
 
 import {
   MOODS, GSU_CENTER, SEED_PINS, WAVE_PINS, SECRET_STRESS_PINS,
@@ -12,7 +12,6 @@ import { getTimeOfDay, getArea } from './utils'
 import {
   initJournalPins, saveJournalPins, initStreak, bumpStreak,
   loadRecoveryStories, saveRecoveryStories, getDeviceId,
-  getSupportedPins, addSupportedPin,
 } from './storage'
 
 import PinDropper from './components/PinDropper'
@@ -56,9 +55,6 @@ export default function App() {
   const [happyPlaces, setHappyPlaces] = useState([])
   const [happyPlaceIds, setHappyPlaceIds] = useState(new Set())
   const [joinToast, setJoinToast] = useState(null)
-  // ── Community support ("Me Too") ─────────────────────────────────────────
-  const [supportedPins, setSupportedPins] = useState(() => getSupportedPins())
-  const [ripplePinId, setRipplePinId] = useState(null) // drives the ripple animation
   const [theme, setTheme] = useState(() => {
     const stored = localStorage.getItem('moodmap_theme')
     if (stored === 'light' || stored === 'dark') return stored
@@ -84,31 +80,21 @@ export default function App() {
   // optimistically, so there is zero double-render.
   useEffect(() => {
     const seenFirebaseIds = new Set()
-    const unsub = subscribeToPins(
-      // onAdded — initial load + new pins from any client
-      (pin) => {
-        setPins(prev => {
-          if (seenFirebaseIds.has(pin.id)) return prev
-          seenFirebaseIds.add(pin.id)
-          // Replace the optimistic temp entry (same timestamp, prefixed "local_")
-          const tempId = `local_${pin.timestamp}`
-          const hasTemp = prev.some(p => p.id === tempId)
-          if (hasTemp) {
-            return prev.map(p => p.id === tempId ? { ...p, id: pin.id } : p)
-          }
-          if (prev.some(p => p.id === pin.id)) return prev
-          return [...prev, pin]
-        })
-      },
-      // onModified — live supportCount updates from any client
-      (pin) => {
-        setPins(prev => prev.map(p =>
-          p.id === pin.id
-            ? { ...p, supportCount: pin.supportCount ?? p.supportCount ?? 0 }
-            : p
-        ))
-      },
-    )
+    const unsub = subscribeToPins((pin) => {
+      setPins(prev => {
+        if (seenFirebaseIds.has(pin.id)) return prev
+        seenFirebaseIds.add(pin.id)
+        // Replace the optimistic temp entry (same timestamp, prefixed "local_")
+        const tempId = `local_${pin.timestamp}`
+        const hasTemp = prev.some(p => p.id === tempId)
+        if (hasTemp) {
+          return prev.map(p => p.id === tempId ? { ...p, id: pin.id } : p)
+        }
+        // Pin from a different client — just append
+        if (prev.some(p => p.id === pin.id)) return prev
+        return [...prev, pin]
+      })
+    })
     return unsub
   }, [])
 
@@ -403,36 +389,6 @@ export default function App() {
 
   function handleMapClick(latlng) { setPending(latlng) }
 
-  async function handleSupport(pinId) {
-    if (supportedPins.has(String(pinId))) return  // idempotent — one support per device per pin
-
-    // Trigger ripple animation, clear after it finishes
-    setRipplePinId(pinId)
-    setTimeout(() => setRipplePinId(null), 650)
-
-    // Optimistic update — instant local feedback
-    const newSupported = new Set([...supportedPins, String(pinId)])
-    setSupportedPins(newSupported)
-    addSupportedPin(pinId)
-    setPins(prev => prev.map(p =>
-      p.id === pinId ? { ...p, supportCount: (p.supportCount || 0) + 1 } : p
-    ))
-
-    // Persist to Firestore atomically (server-side increment — no race conditions)
-    try {
-      await incrementPinSupport(pinId)
-    } catch {
-      // Rollback both local caches on failure
-      setSupportedPins(prev => { const n = new Set(prev); n.delete(String(pinId)); return n })
-      setPins(prev => prev.map(p =>
-        p.id === pinId ? { ...p, supportCount: Math.max(0, (p.supportCount || 1) - 1) } : p
-      ))
-    }
-
-    // Best-effort backend notification (rate-limit validation) — non-blocking
-    sendSupport(pinId).catch(() => {})
-  }
-
   async function addMoodPin(mood, location) {
     const timestamp = Date.now()
     const id = `local_${timestamp}` // temp ID replaced by Firebase doc ID via the listener
@@ -643,54 +599,18 @@ export default function App() {
                     </Popup>
                   ) : !isUserPin && (
                     <Popup>
-                      <div style={{ minWidth: 186, fontFamily: 'inherit' }}>
-                        {/* Pin identity row */}
-                        {hasStory ? (
-                          <div style={{ marginBottom: 8 }}>
-                            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 4 }}>
-                              {pin.fromEmoji} {pin.fromMood} → {pin.emoji} {pin.mood}
-                            </div>
-                            <div style={{ fontSize: 12, fontStyle: 'italic', color: '#555', lineHeight: 1.5 }}>
-                              "{pin.story}"
-                            </div>
+                      {hasStory ? (
+                        <div style={{ maxWidth: 200 }}>
+                          <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                            {pin.fromEmoji} {pin.fromMood} → {pin.emoji} {pin.mood}
                           </div>
-                        ) : (
-                          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>
-                            {pin.emoji} {pin.mood}
-                            <span style={{ fontWeight: 400, color: '#888', marginLeft: 6, fontSize: 11 }}>
-                              {pin.time}
-                            </span>
+                          <div style={{ fontSize: 12, fontStyle: 'italic', color: '#555', lineHeight: 1.5 }}>
+                            "{pin.story}"
                           </div>
-                        )}
-
-                        {/* Support count badge — only shown once at least one person has sent support */}
-                        {(pin.supportCount > 0) && (
-                          <div style={{
-                            fontSize: 11, color: '#c2185b', fontWeight: 600,
-                            marginBottom: 8, letterSpacing: '0.01em',
-                          }}>
-                            ❤️ {pin.supportCount}{' '}
-                            {pin.supportCount === 1 ? 'student relates' : 'students relate'}
-                          </div>
-                        )}
-
-                        {/* Me Too / Sent button */}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            clickedPinRef.current = true
-                            handleSupport(pin.id)
-                          }}
-                          disabled={supportedPins.has(String(pin.id))}
-                          className={[
-                            'popup-support-btn',
-                            ripplePinId === pin.id ? 'popup-support-ripple' : '',
-                            supportedPins.has(String(pin.id)) ? 'popup-support-sent' : '',
-                          ].filter(Boolean).join(' ')}
-                        >
-                          {supportedPins.has(String(pin.id)) ? '❤️ Sent!' : '🤗 Me Too'}
-                        </button>
-                      </div>
+                        </div>
+                      ) : (
+                        `${pin.emoji} ${pin.mood} — ${pin.time}`
+                      )}
                     </Popup>
                   )}
                 </CircleMarker>
