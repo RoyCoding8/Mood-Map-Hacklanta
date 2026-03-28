@@ -1613,7 +1613,6 @@ textarea:focus-visible {
   }
 }
 
-<<<<<<< HEAD
 @media (max-width: 560px) {
   .app-header {
     display: grid;
@@ -1648,55 +1647,6 @@ textarea:focus-visible {
   .quick-checkin-grid {
     grid-template-columns: 1fr;
   }
-=======
-/* ── Community Support button ────────────────────────────────────────────── */
-@keyframes support-ripple {
-  0%   { box-shadow: 0 0 0 0 rgba(194, 24, 91, 0.45); }
-  60%  { box-shadow: 0 0 0 10px rgba(194, 24, 91, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(194, 24, 91, 0); }
-}
-
-@keyframes heart-pop {
-  0%   { transform: scale(1); }
-  35%  { transform: scale(1.35); }
-  65%  { transform: scale(0.9); }
-  100% { transform: scale(1); }
-}
-
-.popup-support-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 6px 14px;
-  border: 1.5px solid #c2185b;
-  border-radius: 20px;
-  background: #fff;
-  color: #c2185b;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-  min-height: 32px;
-}
-
-.popup-support-btn:hover:not(:disabled) {
-  background: #fce4ec;
-}
-
-.popup-support-btn:disabled {
-  cursor: default;
-  opacity: 0.9;
-}
-
-.popup-support-btn.popup-support-ripple {
-  animation: support-ripple 0.55s ease-out;
-}
-
-.popup-support-btn.popup-support-sent {
-  background: #fce4ec;
-  border-color: #e91e8c;
-  animation: heart-pop 0.4s ease-out;
->>>>>>> 269b013461b5f2575b326ed9e14e3d55af089e1f
 }
 
 @media (prefers-reduced-motion: reduce) {
