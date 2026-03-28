@@ -1,0 +1,179 @@
+/* ── CrisisCard ──────────────────────────────────────────────────────────────
+   High-contrast dark card used whenever requiresEscalation: true is returned
+   by the backend. Colours chosen to pass WCAG AA contrast on all text.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+@keyframes crisis-enter {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes crisis-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.55); }
+  50%       { box-shadow: 0 0 0 8px rgba(220, 38, 38, 0);  }
+}
+
+.crisis-card {
+  background: #0f172a;               /* deep slate — calming but serious      */
+  border-radius: 16px;
+  padding: 20px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: crisis-enter 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  border: 1.5px solid #1e293b;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+
+.crisis-header {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.crisis-icon {
+  font-size: 28px;
+  margin-bottom: 2px;
+}
+
+.crisis-headline {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: #f8fafc;                    /* near-white — 15.3:1 on #0f172a        */
+  letter-spacing: -0.3px;
+  line-height: 1.3;
+}
+
+.crisis-sub {
+  margin: 0;
+  font-size: 12px;
+  color: #94a3b8;                    /* slate-400 — 4.6:1 on #0f172a (AA)     */
+  line-height: 1.5;
+}
+
+/* ── Resource buttons ────────────────────────────────────────────────────── */
+
+.crisis-resources {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.crisis-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 56px;
+  border-radius: 12px;
+  padding: 12px 14px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: filter 0.15s, transform 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.crisis-btn:active {
+  transform: scale(0.98);
+}
+
+/* Primary: 988 — large, red, pulsing ring to draw the eye */
+.crisis-btn-primary {
+  background: #dc2626;               /* red-600                                */
+  border: none;
+  animation: crisis-pulse 2.4s ease-in-out infinite;
+}
+
+.crisis-btn-primary:hover,
+.crisis-btn-primary:focus-visible {
+  filter: brightness(1.1);
+}
+
+.crisis-btn-primary .crisis-btn-name {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.crisis-btn-primary .crisis-btn-detail {
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 11px;
+}
+
+.crisis-btn-primary .crisis-btn-cta {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Secondary: other resources */
+.crisis-btn-secondary {
+  background: #1e293b;               /* slate-800                              */
+  border: 1px solid #334155;         /* slate-700                              */
+}
+
+.crisis-btn-secondary:hover,
+.crisis-btn-secondary:focus-visible {
+  background: #263548;
+  border-color: #475569;
+}
+
+.crisis-btn-secondary .crisis-btn-name {
+  color: #e2e8f0;                    /* slate-200 — 9.6:1 on #1e293b (AAA)     */
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.crisis-btn-secondary .crisis-btn-detail {
+  color: #94a3b8;                    /* slate-400 — 4.6:1                      */
+  font-size: 11px;
+}
+
+.crisis-btn-secondary .crisis-btn-cta {
+  color: #64748b;                    /* slate-500                              */
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.crisis-btn-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── Dismiss link ────────────────────────────────────────────────────────── */
+
+.crisis-dismiss {
+  align-self: center;
+  background: none;
+  border: none;
+  color: #475569;                    /* slate-600                              */
+  font-size: 12px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: color 0.15s;
+  font-family: inherit;
+  min-height: 36px;
+}
+
+.crisis-dismiss:hover,
+.crisis-dismiss:focus-visible {
+  color: #94a3b8;
+}

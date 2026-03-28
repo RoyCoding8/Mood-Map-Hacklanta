@@ -2,12 +2,16 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { POSITIVE_MOODS } from '../constants'
 import { detectLevel } from '../utils'
 import { getAIComfort, getAIChat } from '../api'
+import CrisisCard from './CrisisCard'
 import './CompanionPanel.css'
 
 export default function CompanionPanel({ mood, color, onClose, onFeelBetter, extras = {},
   onEmergency, onSafeConfirmed, onMakeHappyPlace, happyPlaces = [], onShowHappyPlace, prefersReducedMotion = false }) {
   const [comfort, setComfort] = useState(null)
   const [typing, setTyping] = useState(true)
+  // showCrisisCard is set true when either the comfort or chat AI endpoint
+  // returns requiresEscalation: true — distinct from the L3 physical-danger overlay.
+  const [showCrisisCard, setShowCrisisCard] = useState(false)
   const [showChat, setShowChat] = useState(false)
   const [chatInput, setChatInput] = useState('')
   const [chatHistory, setChatHistory] = useState([])
@@ -46,6 +50,8 @@ export default function CompanionPanel({ mood, color, onClose, onFeelBetter, ext
     getAIComfort(mood, stableExtras).then(data => {
       setComfort(data)
       setTyping(false)
+      // Backend signals a potential crisis — show crisis card instead of comfort content
+      if (data?.requiresEscalation === true) setShowCrisisCard(true)
     }).catch(() => {
       setComfortError(true)
       setComfort({
@@ -157,7 +163,21 @@ export default function CompanionPanel({ mood, color, onClose, onFeelBetter, ext
 
     setChatTyping(true)
     try {
-      const { reply } = await getAIChat(mood, msg)
+      const data = await getAIChat(mood, msg)
+
+      // Backend semantic detection caught a crisis signal the keyword list missed
+      if (data?.requiresEscalation === true) {
+        setShowCrisisCard(true)
+        setChatHistory(h => [...h, {
+          from: 'ai',
+          text: 'Your wellbeing matters most. Please reach out using the resources below.',
+          lvl: effectiveLevel,
+        }])
+        setChatTyping(false)
+        return
+      }
+
+      const { reply } = data
       setChatHistory(h => [...h, { from: 'ai', text: reply, lvl: effectiveLevel }])
       if (readAloud) speakText(reply)
     } catch {
@@ -232,6 +252,11 @@ export default function CompanionPanel({ mood, color, onClose, onFeelBetter, ext
         </div>
       ) : comfort && (
         <>
+          {/* Crisis escalation — replaces all comfort content with hardcoded resources */}
+          {showCrisisCard ? (
+            <CrisisCard onDismiss={() => setShowCrisisCard(false)} />
+          ) : (
+          <>
           {comfortError && (
             <div className="companion-error-box">
               Couldn’t reach the AI — showing a fallback message
@@ -457,10 +482,16 @@ export default function CompanionPanel({ mood, color, onClose, onFeelBetter, ext
                   Listening… tap mic to stop
                 </div>
               )}
+              {/* Crisis card inside chat — shown when AI detects escalation during conversation */}
+              {showCrisisCard && (
+                <CrisisCard onDismiss={() => setShowCrisisCard(false)} />
+              )}
               <div className="chat-safety-footer">
                 Campus Police: 404-413-5717&nbsp;&nbsp;|&nbsp;&nbsp;Crisis Text Line: Text HOME to 741741
               </div>
             </div>
+          )}
+          </>
           )}
         </>
       )}

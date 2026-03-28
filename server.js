@@ -3,10 +3,47 @@ import express from 'express'
 import {
   requireEnv, setCors, setSecurityHeaders, rateLimitMiddleware,
   validateMood, validateMessage, validatePins, validateEntries,
-  isPositiveMood, callGroq, parseLLMJson, getBuilding, safeError
+  isPositiveMood, callGroq, parseLLMJson, getBuilding, safeError,
+  validateDeviceId, checkPinRateLimit,
 } from './lib/groq.js'
 
 requireEnv()
+
+// ── Crisis escalation payload ─────────────────────────────────────────────────
+// Hardcoded — never AI-generated. Returned any time the LLM signals
+// requiresEscalation: true in either the /api/comfort or /api/chat routes.
+// Resources are intentionally minimal and authoritative; do not add AI text.
+const EMERGENCY_PAYLOAD = Object.freeze({
+  requiresEscalation: true,
+  headline: 'You matter. Help is here right now.',
+  sub: 'These services are free, confidential, and available 24/7.',
+  resources: [
+    {
+      name: '988 Suicide & Crisis Lifeline',
+      detail: 'Call or text — free, confidential, 24/7',
+      href: 'tel:988',
+      primary: true,
+    },
+    {
+      name: 'Crisis Text Line',
+      detail: 'Text HOME to 741741 — silent, immediate',
+      href: 'sms:741741?body=HOME',
+      primary: false,
+    },
+    {
+      name: 'GSU Campus Police',
+      detail: 'On-campus emergencies — 404-413-5717',
+      href: 'tel:+14044135717',
+      primary: false,
+    },
+    {
+      name: 'GSU Counseling Services',
+      detail: 'Walk-ins welcome — 404-413-1640',
+      href: 'tel:+14044131640',
+      primary: false,
+    },
+  ],
+})
 
 const app = express()
 
@@ -120,7 +157,34 @@ app.post('/api/comfort', async (req, res) => {
   "recoveryPrompt": "a gentle reflection question to understand what they need"
 }`
 
-    const systemPrompt = `Generate a COMPLETELY UNIQUE warm message for a college student. No two should ever sound alike.
+    // ── Crisis detection block — evaluated before any comfort content ──────────
+    // The model sees mood, time-of-day, and how many pins were dropped today.
+    // Semantic signals the keyword list misses (e.g. 5+ Sad/Stressed pins at 3 AM)
+    // are what this layer is designed to catch.
+    const crisisBlock = `\
+══ SAFETY EVALUATION — READ THIS BEFORE GENERATING ANYTHING ══
+You are helping a student who anonymously checked in their mood on a campus app.
+Evaluate whether the overall context — mood, time of day, and check-in count —
+suggests the student may be in severe emotional distress, suicidal ideation, or
+at risk of self-harm.
+
+Signals to watch for:
+  • A negative mood (Sad / Anxious / Stressed) combined with late-night time
+    AND a high pin count (e.g. their 5th or more check-in today)
+  • Any context that, taken together, would make a trained counsellor concerned
+
+If you judge the situation to be a potential crisis, you MUST respond with ONLY
+the following JSON — nothing else, no keys added or removed:
+  {"requiresEscalation": true}
+The app will immediately replace your response with professional crisis resources.
+
+If the context does NOT suggest a crisis, ignore this block entirely and generate
+the normal response described below.
+══════════════════════════════════════════════════════════════════
+
+`
+
+    const systemPrompt = crisisBlock + `Generate a COMPLETELY UNIQUE warm message for a college student. No two should ever sound alike.
 NEVER use: "I understand", "That must be", "I hear you", "It's okay to", or any therapy-speak clichés.
 ${isPositive ? '' : 'Each message must feel like it came from a genuinely different personality.'}
 ${moodExtra[mood] || ''}
@@ -131,7 +195,17 @@ ${jsonShape}`
     const userPrompt = `Student is feeling ${mood} at ${timeOfDay}. ${checkInNote} ${timeNote} Variety seed: ${randomSeed}.`
 
     const text = await callGroq({ systemPrompt, userPrompt, maxTokens: 500 })
-    res.json(parseLLMJson(text))
+    const parsed = parseLLMJson(text)
+
+    // ── Intercept escalation flag ────────────────────────────────────────────
+    // The model signals crisis by returning {"requiresEscalation": true}.
+    // We bypass the normal comfort payload and return the hardcoded emergency
+    // resources — never AI-generated text for a crisis response.
+    if (parsed?.requiresEscalation === true) {
+      return res.json(EMERGENCY_PAYLOAD)
+    }
+
+    res.json(parsed)
   } catch (e) {
     safeError(res, e, 'Comfort')
   }
@@ -143,16 +217,49 @@ app.post('/api/chat', async (req, res) => {
     const message = validateMessage(req.body?.message)
     if (!mood || !message) return res.status(400).json({ error: 'Invalid mood or message' })
 
-    const reply = await callGroq({
-      systemPrompt: `You are a warm, supportive best friend chatting with a student who is feeling ${mood}.
+    const chatSystemPrompt = `\
+══ SAFETY EVALUATION — READ THIS BEFORE RESPONDING ══
+Scan the student's message for ANY of the following signals:
+  • Suicidal ideation or plans — even indirect ("I want to disappear",
+    "I can't go on", "I don't want to be here anymore", "what's the point")
+  • Intent to self-harm or disclosure of recent self-harm
+  • Hopelessness combined with finality ("nobody would miss me",
+    "I give up completely", "I've decided")
+  • Farewell or goodbye statements
+
+If you detect ANY of these — even weakly — you MUST respond with ONLY:
+  {"requiresEscalation": true}
+Do NOT offer comfort. Do NOT engage with the content. The app will display
+professional crisis resources immediately.
+
+If the message does not contain any of these signals, respond as follows:
+══════════════════════════════════════════════════════════════════
+
+You are a warm, supportive best friend chatting with a student who is feeling ${mood}.
 Reply with empathy, maybe a little humour, always kind.
 Keep it to 2-4 sentences. No bullet points. No clinical language. Just real, warm conversation.
-Do not introduce yourself. Just respond naturally.`,
+Do not introduce yourself. Just respond naturally.`
+
+    const rawReply = await callGroq({
+      systemPrompt: chatSystemPrompt,
       userPrompt: message,
       maxTokens: 200
     })
 
-    res.json({ reply })
+    // ── Intercept escalation flag ────────────────────────────────────────────
+    // The model may return {"requiresEscalation": true} as a JSON string.
+    // Strip markdown fences and attempt to parse before treating as plain text.
+    try {
+      const maybeJson = rawReply.replace(/```json\n?/g, '').replace(/```/g, '').trim()
+      const parsed = JSON.parse(maybeJson)
+      if (parsed?.requiresEscalation === true) {
+        return res.json(EMERGENCY_PAYLOAD)
+      }
+    } catch {
+      // rawReply is plain text — fall through to normal response
+    }
+
+    res.json({ reply: rawReply })
   } catch (e) {
     safeError(res, e, 'Chat')
   }
@@ -178,6 +285,132 @@ Return only the reflection text. No quotes, no labels, no extra formatting.`,
   } catch (e) {
     safeError(res, e, 'Journal')
   }
+})
+
+// ── Pin ownership routes ──────────────────────────────────────────────────────
+//
+// In-memory map:  firebaseDocId → deviceId
+//
+// Why in-memory?  The server is the rate-limit + ownership gatekeeper; the
+// actual Firestore write/update/delete still happens on the client after the
+// server returns 200.  Restarting the server clears the map, but for a
+// hackathon (and even for production with a single dyno) this is fine.
+//
+// For multi-instance production: replace the Map with a Redis SET/GET.
+//
+const pinOwnership = new Map()    // { [firebaseDocId]: deviceId }
+const MAX_OWNERSHIP_ENTRIES = 10_000
+
+function readDeviceId(req) {
+  return validateDeviceId(req.headers['x-device-id'])
+}
+
+function pruneOwnership() {
+  if (pinOwnership.size > MAX_OWNERSHIP_ENTRIES) {
+    // Evict oldest ~10% of entries (Map iteration is insertion-order)
+    let pruned = 0
+    for (const key of pinOwnership.keys()) {
+      pinOwnership.delete(key)
+      if (++pruned >= 1_000) break
+    }
+  }
+}
+
+/**
+ * POST /api/pins/:id/support
+ *
+ * Validates the requesting device and records the support action.
+ * Returns 200 { ok: true } on success so the client can then call
+ * incrementPinSupport() to atomically update the Firestore document.
+ *
+ * Rate-limited to 30 req/min by the global rateLimitMiddleware already
+ * mounted on /api. The local supportedPins Set in localStorage provides
+ * an additional "one support per device per pin" guard client-side.
+ *
+ * Header: X-Device-Id: "<uuid-v4>"
+ */
+app.post('/api/pins/:id/support', (req, res) => {
+  const deviceId = readDeviceId(req)
+  if (!deviceId) return res.status(400).json({ error: 'Missing or invalid X-Device-Id header' })
+
+  // pinId is informational here — ownership is NOT checked (any device can
+  // support any pin). The route exists to validate the device token and
+  // provide a server-side hook for future rate-limiting or analytics.
+  const pinId = req.params.id
+  if (!pinId) return res.status(400).json({ error: 'Missing pin ID' })
+
+  res.json({ ok: true, pinId })
+})
+
+/**
+ * POST /api/pins/register
+ *
+ * Called by the client immediately after a successful Firebase write.
+ * Enforces the 1-pin-per-minute rate limit and stores ownership so that
+ * PATCH / DELETE can verify the requesting device is the creator.
+ *
+ * Body:  { pinId: "<firebase-doc-id>" }
+ * Header: X-Device-Id: "<uuid-v4>"
+ */
+app.post('/api/pins/register', (req, res) => {
+  const deviceId = readDeviceId(req)
+  if (!deviceId) return res.status(400).json({ error: 'Missing or invalid X-Device-Id header' })
+
+  const pinId = typeof req.body?.pinId === 'string' ? req.body.pinId.slice(0, 128) : null
+  if (!pinId) return res.status(400).json({ error: 'Missing pinId in body' })
+
+  if (!checkPinRateLimit(deviceId)) {
+    return res.status(429).json({ error: 'You can only drop one pin per minute. Take a breath! 🌿' })
+  }
+
+  pinOwnership.set(pinId, deviceId)
+  pruneOwnership()
+
+  res.json({ ok: true })
+})
+
+/**
+ * PATCH /api/pins/:id
+ *
+ * Verifies the requesting device owns the pin before the client performs
+ * the Firestore update.  Returns 200 { ok: true } on success so the client
+ * can proceed; the actual field update is done client-side via Firebase SDK.
+ *
+ * Header: X-Device-Id: "<uuid-v4>"
+ */
+app.patch('/api/pins/:id', (req, res) => {
+  const deviceId = readDeviceId(req)
+  if (!deviceId) return res.status(400).json({ error: 'Missing or invalid X-Device-Id header' })
+
+  const pinId = req.params.id
+  const owner = pinOwnership.get(pinId)
+
+  if (!owner)            return res.status(404).json({ error: 'Pin not found or session expired' })
+  if (owner !== deviceId) return res.status(403).json({ error: 'You can only edit your own pins' })
+
+  res.json({ ok: true })
+})
+
+/**
+ * DELETE /api/pins/:id
+ *
+ * Same ownership check as PATCH.  On success, also removes the entry from
+ * the ownership map so the record doesn't linger in memory.
+ *
+ * Header: X-Device-Id: "<uuid-v4>"
+ */
+app.delete('/api/pins/:id', (req, res) => {
+  const deviceId = readDeviceId(req)
+  if (!deviceId) return res.status(400).json({ error: 'Missing or invalid X-Device-Id header' })
+
+  const pinId = req.params.id
+  const owner = pinOwnership.get(pinId)
+
+  if (!owner)            return res.status(404).json({ error: 'Pin not found or session expired' })
+  if (owner !== deviceId) return res.status(403).json({ error: 'You can only delete your own pins' })
+
+  pinOwnership.delete(pinId)
+  res.json({ ok: true })
 })
 
 const PORT = process.env.PORT || 3001

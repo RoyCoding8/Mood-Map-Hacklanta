@@ -1,16 +1,23 @@
+import { getDeviceId } from './storage'
+
 const BASE = import.meta.env.PROD ? '' : 'http://localhost:3001'
 
 const FETCH_TIMEOUT = 20_000
 
-async function apiFetch(url, body) {
+// method defaults to POST; pass null for body on PATCH/DELETE (no body needed)
+async function apiFetch(url, body, method = 'POST') {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT)
 
   try {
     const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Device-Id': getDeviceId(),   // Shadow ID attached to every request
+      },
+      // Omit body entirely for DELETE / bodyless PATCH to satisfy strict servers
+      body: body !== null ? JSON.stringify(body) : undefined,
       signal: controller.signal,
     })
 
@@ -53,4 +60,44 @@ export async function getAIChat(mood, message) {
 
 export async function getJournalSummary(entries) {
   return apiFetch(`${BASE}/api/journal`, { entries })
+}
+
+// ── Pin ownership API ─────────────────────────────────────────────────────────
+
+/**
+ * Rate-limit check + ownership registration.
+ * Must be called after the Firebase write so we have the real Firestore doc ID.
+ * Returns { ok: true } or throws on rate-limit (429) / validation error (400).
+ */
+export async function registerPin(pinId) {
+  return apiFetch(`${BASE}/api/pins/register`, { pinId })
+}
+
+/**
+ * Verify the current device owns `pinId` before performing an update.
+ * Returns { ok: true } or throws 403 if ownership doesn't match.
+ */
+export async function verifyPinUpdate(pinId) {
+  return apiFetch(`${BASE}/api/pins/${encodeURIComponent(pinId)}`, null, 'PATCH')
+}
+
+/**
+ * Verify the current device owns `pinId` before performing a delete.
+ * Returns { ok: true } or throws 403 if ownership doesn't match.
+ * Also removes the pin from the server's ownership map.
+ */
+export async function verifyPinDelete(pinId) {
+  return apiFetch(`${BASE}/api/pins/${encodeURIComponent(pinId)}`, null, 'DELETE')
+}
+
+/**
+ * Notify the backend that this device is sending support to a pin.
+ * The backend validates the device ID and applies rate limiting.
+ * The actual Firestore supportCount increment is done client-side via
+ * incrementPinSupport() after this call succeeds.
+ *
+ * Fire-and-forget safe — the optimistic local update already happened.
+ */
+export async function sendSupport(pinId) {
+  return apiFetch(`${BASE}/api/pins/${encodeURIComponent(pinId)}/support`, null, 'POST')
 }
