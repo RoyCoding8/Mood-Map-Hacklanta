@@ -420,7 +420,6 @@ export default function App() {
   }
 
   const userPinIds = new Set(userPins.map(p => p.id))
-  const recentUserPins = [...userPins].slice(-5).reverse()
 
   const moodTotals = {}
   MOODS.forEach(m => { moodTotals[m.label] = 0 })
