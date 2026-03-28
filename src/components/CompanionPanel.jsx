@@ -28,6 +28,7 @@ export default function CompanionPanel({ mood, color, onClose, onFeelBetter, ext
   const speechSupported = !!(window.SpeechRecognition || window.webkitSpeechRecognition)
 
   // #16: memoize extras to stabilize dependency
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const stableExtras = useMemo(() => extras, [extras.timeOfDay, extras.pinNumber, extras.randomSeed])
 
   useEffect(() => {
