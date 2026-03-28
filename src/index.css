@@ -101,28 +101,49 @@
 }
 
 
-/* ── Dark theme (CSS filter approach) ──
-   Inverts the entire UI while preserving map tiles,
-   images and video. No separate color tokens needed.
-   ────────────────────────────────────── */
+/* ── Dark theme ── */
 [data-theme='dark'] {
-  filter: invert(1) hue-rotate(180deg);
-  background: oklch(0.975 0.005 250); /* same as light --bg, filter handles the rest */
+  --bg:           oklch(0.15 0.015 250);
+  --surface-1:    oklch(0.18 0.017 250);
+  --surface-2:    oklch(0.22 0.018 250);
+  --surface-3:    oklch(0.26 0.019 250);
+  --border:       oklch(0.30 0.02  250);
+  --border-subtle: oklch(0.26 0.017 250);
+
+  --text-1:       oklch(0.92 0.01  250);
+  --text-2:       oklch(0.78 0.01  250);
+  --text-muted:   oklch(0.60 0.01  250);
+
+  --primary:       oklch(0.72 0.14 255);
+  --primary-hover:  oklch(0.78 0.12 255);
+  --primary-soft:  oklch(0.24 0.06 255);
+  --primary-text:  oklch(0.15 0.015 255);
+
+  --success-bg:   oklch(0.22 0.04 155);
+  --success-text: oklch(0.78 0.10 155);
+  --danger-bg:    oklch(0.22 0.05 25);
+  --danger-text:  oklch(0.80 0.10 25);
+  --warning-bg:   oklch(0.22 0.05 85);
+  --warning-text: oklch(0.80 0.10 85);
+  --success-solid: oklch(0.62 0.11 155);
+  --danger-solid:  oklch(0.66 0.12 25);
+  --warning-solid: oklch(0.72 0.10 75);
+  --on-success:    oklch(0.16 0.01 155);
+  --on-danger:     oklch(0.16 0.01 25);
+  --on-warning:    oklch(0.14 0.01 75);
+
+  --surface-overlay:        oklch(0.22 0.018 250 / 0.92);
+  --surface-overlay-strong: oklch(0.18 0.017 250 / 0.97);
+  --surface-elevated:       oklch(0.20 0.017 250);
+
+  --shadow-sm:  0 1px 2px oklch(0 0 0 / 0.15);
+  --shadow-md:  0 2px 8px oklch(0 0 0 / 0.20);
+  --shadow-lg:  0 4px 16px oklch(0 0 0 / 0.25);
 }
 
-/* Re-invert elements that should keep their original colors */
-[data-theme='dark'] .leaflet-tile,
-[data-theme='dark'] .leaflet-tile-pane,
-[data-theme='dark'] img,
-[data-theme='dark'] video,
-[data-theme='dark'] canvas,
-[data-theme='dark'] svg image,
-[data-theme='dark'] .leaflet-marker-icon,
-[data-theme='dark'] .leaflet-marker-shadow,
-[data-theme='dark'] .leaflet-popup-content img,
-[data-theme='dark'] [role="img"],
-[data-theme='dark'] .mood-picker-emoji {
-  filter: invert(1) hue-rotate(180deg);
+/* Darken map tiles via CSS filter instead of loading CARTO dark tiles */
+[data-theme='dark'] .leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(1.1);
 }
 
 
