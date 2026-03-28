@@ -62,6 +62,11 @@ export async function getJournalSummary(entries) {
   return apiFetch(`${BASE}/api/journal`, { entries })
 }
 
+export async function getReelScript(pins, recoveryStories = []) {
+  if (pins.length === 0) return null
+  return apiFetch(`${BASE}/api/generate-reel-script`, { pins, recoveryStories })
+}
+
 // ── Pin ownership API ─────────────────────────────────────────────────────────
 
 /**
