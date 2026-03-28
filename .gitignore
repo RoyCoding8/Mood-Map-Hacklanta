@@ -17,7 +17,7 @@ Thumbs.db
 .vscode/
 .idea/
 
-./claude
+.claude/
 .cache/
 .eslintcache
 .vercel/
