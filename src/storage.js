@@ -58,3 +58,16 @@ export function loadRecoveryStories() {
 export function saveRecoveryStories(s) {
   localStorage.setItem('moodmap_recovery_stories', encode(s))
 }
+
+// ── Shadow ID (Device Token) ──────────────────────────────────────────────────
+// Generates a cryptographically secure UUID v4 on first call and persists it
+// in localStorage. Completely anonymous — no account, no server registration.
+export function getDeviceId() {
+  const KEY = 'moodmap_device_id'
+  let id = localStorage.getItem(KEY)
+  if (!id) {
+    id = crypto.randomUUID()          // native SubtleCrypto — no polyfill needed
+    localStorage.setItem(KEY, id)
+  }
+  return id
+}

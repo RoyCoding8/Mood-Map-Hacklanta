@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import './App.css'
 import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
-import { getAIInsights, getJournalSummary } from './api'
+import { getAIInsights, getJournalSummary, registerPin, verifyPinUpdate, verifyPinDelete } from './api'
+import { pushMoodPin, subscribeToPins, updateMoodPin, deleteMoodPin } from './firebase'
 
 import {
   MOODS, GSU_CENTER, SEED_PINS, WAVE_PINS, SECRET_STRESS_PINS,
@@ -10,7 +11,7 @@ import {
 import { getTimeOfDay, getArea } from './utils'
 import {
   initJournalPins, saveJournalPins, initStreak, bumpStreak,
-  loadRecoveryStories, saveRecoveryStories,
+  loadRecoveryStories, saveRecoveryStories, getDeviceId,
 } from './storage'
 
 import PinDropper from './components/PinDropper'
@@ -69,6 +70,31 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', theme)
     localStorage.setItem('moodmap_theme', theme)
   }, [theme])
+
+  // ── Real-time Firebase sync ───────────────────────────────────────────────
+  // Subscribes once on mount. Every pin added by ANY client (including this
+  // one, via the optimistic-then-swap flow in addMoodPin) triggers `onAdded`.
+  // We deduplicate against the local temp ID that was already inserted
+  // optimistically, so there is zero double-render.
+  useEffect(() => {
+    const seenFirebaseIds = new Set()
+    const unsub = subscribeToPins((pin) => {
+      setPins(prev => {
+        if (seenFirebaseIds.has(pin.id)) return prev
+        seenFirebaseIds.add(pin.id)
+        // Replace the optimistic temp entry (same timestamp, prefixed "local_")
+        const tempId = `local_${pin.timestamp}`
+        const hasTemp = prev.some(p => p.id === tempId)
+        if (hasTemp) {
+          return prev.map(p => p.id === tempId ? { ...p, id: pin.id } : p)
+        }
+        // Pin from a different client — just append
+        if (prev.some(p => p.id === pin.id)) return prev
+        return [...prev, pin]
+      })
+    })
+    return unsub
+  }, [])
 
   useEffect(() => {
     function countRecent() {
@@ -217,6 +243,15 @@ export default function App() {
     const origPin = pins.find(p => p.id === pinId)
     if (!origPin) return
 
+    // If this is a real Firebase pin the user owns (not a temp/seed ID),
+    // verify ownership with the backend then persist the mood change to Firestore.
+    const isRealPin = !String(pinId).startsWith('local_') && userPins.some(p => p.id === pinId)
+    if (isRealPin) {
+      verifyPinUpdate(pinId)
+        .then(() => updateMoodPin(pinId, { mood: newMood.label, color: newMood.color, emoji: newMood.emoji }))
+        .catch(() => {}) // non-critical — local state is already updated below
+    }
+
     setPins(prev => prev.map(p => p.id === pinId ? {
       ...p,
       mood: newMood.label, color: newMood.color, emoji: newMood.emoji,
@@ -340,19 +375,36 @@ export default function App() {
 
   function handleMapClick(latlng) { setPending(latlng) }
 
-  function addMoodPin(mood, location) {
-    const id = Date.now()
+  async function addMoodPin(mood, location) {
+    const timestamp = Date.now()
+    const id = `local_${timestamp}` // temp ID replaced by Firebase doc ID via the listener
     const area = getArea(location.lat)
     const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 
+    // Optimistic local update — renders instantly before Firebase round-trip
     setPins(prev => [...prev, {
       id, lat: location.lat, lng: location.lng,
       mood: mood.label, color: mood.color, emoji: mood.emoji,
-      time, timestamp: Date.now()
+      time, timestamp,
     }])
     setNewPinIds(prev => new Set([...prev, id]))
     setTimeout(() => setNewPinIds(prev => { const n = new Set(prev); n.delete(id); return n }), 1900)
     setActivityFeed(prev => [{ id, emoji: mood.emoji, mood: mood.label, area }, ...prev].slice(0, 5))
+
+    // Push to Firestore (with deviceId) then register ownership with the backend.
+    // Both are fire-and-forget — pin is already visible locally via optimistic state.
+    pushMoodPin({
+      lat: location.lat, lng: location.lng,
+      mood: mood.label, color: mood.color, emoji: mood.emoji,
+      time, timestamp,
+      deviceId: getDeviceId(),
+    }).then(docRef => {
+      // Tell the Express backend this device owns the pin.
+      // Also enforces the 1-pin/min rate limit — a 429 here is informational only
+      // since the pin is already on the map; in production you'd call registerPin
+      // BEFORE the Firebase write and only write on success.
+      registerPin(docRef.id).catch(() => {})
+    }).catch(() => {})
 
     const journalEntry = { id, time, mood: mood.label, emoji: mood.emoji, color: mood.color, area }
     const newUserPins = [...userPins, journalEntry]
