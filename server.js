@@ -3,8 +3,7 @@ import express from 'express'
 import {
   requireEnv, setCors, setSecurityHeaders, rateLimitMiddleware,
   validateMood, validateMessage, validatePins, validateEntries,
-  isPositiveMood, callGroq, parseLLMJson, getBuilding, safeError,
-  validateDeviceId, checkPinRateLimit,
+  isPositiveMood, callGroq, parseLLMJson, getBuilding, safeError
 } from './lib/groq.js'
 
 requireEnv()
@@ -179,106 +178,6 @@ Return only the reflection text. No quotes, no labels, no extra formatting.`,
   } catch (e) {
     safeError(res, e, 'Journal')
   }
-})
-
-// ── Pin ownership routes ──────────────────────────────────────────────────────
-//
-// In-memory map:  firebaseDocId → deviceId
-//
-// Why in-memory?  The server is the rate-limit + ownership gatekeeper; the
-// actual Firestore write/update/delete still happens on the client after the
-// server returns 200.  Restarting the server clears the map, but for a
-// hackathon (and even for production with a single dyno) this is fine.
-//
-// For multi-instance production: replace the Map with a Redis SET/GET.
-//
-const pinOwnership = new Map()    // { [firebaseDocId]: deviceId }
-const MAX_OWNERSHIP_ENTRIES = 10_000
-
-function readDeviceId(req) {
-  return validateDeviceId(req.headers['x-device-id'])
-}
-
-function pruneOwnership() {
-  if (pinOwnership.size > MAX_OWNERSHIP_ENTRIES) {
-    // Evict oldest ~10% of entries (Map iteration is insertion-order)
-    let pruned = 0
-    for (const key of pinOwnership.keys()) {
-      pinOwnership.delete(key)
-      if (++pruned >= 1_000) break
-    }
-  }
-}
-
-/**
- * POST /api/pins/register
- *
- * Called by the client immediately after a successful Firebase write.
- * Enforces the 1-pin-per-minute rate limit and stores ownership so that
- * PATCH / DELETE can verify the requesting device is the creator.
- *
- * Body:  { pinId: "<firebase-doc-id>" }
- * Header: X-Device-Id: "<uuid-v4>"
- */
-app.post('/api/pins/register', (req, res) => {
-  const deviceId = readDeviceId(req)
-  if (!deviceId) return res.status(400).json({ error: 'Missing or invalid X-Device-Id header' })
-
-  const pinId = typeof req.body?.pinId === 'string' ? req.body.pinId.slice(0, 128) : null
-  if (!pinId) return res.status(400).json({ error: 'Missing pinId in body' })
-
-  if (!checkPinRateLimit(deviceId)) {
-    return res.status(429).json({ error: 'You can only drop one pin per minute. Take a breath! 🌿' })
-  }
-
-  pinOwnership.set(pinId, deviceId)
-  pruneOwnership()
-
-  res.json({ ok: true })
-})
-
-/**
- * PATCH /api/pins/:id
- *
- * Verifies the requesting device owns the pin before the client performs
- * the Firestore update.  Returns 200 { ok: true } on success so the client
- * can proceed; the actual field update is done client-side via Firebase SDK.
- *
- * Header: X-Device-Id: "<uuid-v4>"
- */
-app.patch('/api/pins/:id', (req, res) => {
-  const deviceId = readDeviceId(req)
-  if (!deviceId) return res.status(400).json({ error: 'Missing or invalid X-Device-Id header' })
-
-  const pinId = req.params.id
-  const owner = pinOwnership.get(pinId)
-
-  if (!owner)            return res.status(404).json({ error: 'Pin not found or session expired' })
-  if (owner !== deviceId) return res.status(403).json({ error: 'You can only edit your own pins' })
-
-  res.json({ ok: true })
-})
-
-/**
- * DELETE /api/pins/:id
- *
- * Same ownership check as PATCH.  On success, also removes the entry from
- * the ownership map so the record doesn't linger in memory.
- *
- * Header: X-Device-Id: "<uuid-v4>"
- */
-app.delete('/api/pins/:id', (req, res) => {
-  const deviceId = readDeviceId(req)
-  if (!deviceId) return res.status(400).json({ error: 'Missing or invalid X-Device-Id header' })
-
-  const pinId = req.params.id
-  const owner = pinOwnership.get(pinId)
-
-  if (!owner)            return res.status(404).json({ error: 'Pin not found or session expired' })
-  if (owner !== deviceId) return res.status(403).json({ error: 'You can only delete your own pins' })
-
-  pinOwnership.delete(pinId)
-  res.json({ ok: true })
 })
 
 const PORT = process.env.PORT || 3001
